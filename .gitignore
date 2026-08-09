@@ -1,0 +1,10 @@
+# File Assembly generati
+*.s
+
+# Eseguibili e file oggetto
+*.exe
+*.out
+*.o
+
+# Cartelle di build di VS Code
+.vscode/

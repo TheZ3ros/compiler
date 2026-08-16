@@ -2,6 +2,7 @@
 //1.1
 #include <unistd.h>
 #include <stdio.h>
+#include <getopt.h>
 //1.2
 #include <string.h> //necessario per strlen()
 //1.3
@@ -10,17 +11,37 @@
 
 int main(int argc, char *argv[]){
     int opt;
+    int stop_at_lex = 0;
+    int stop_at_parse = 0;
+    int stop_at_codegen = 0;
+    int stop_at_assembly = 0;
+    //struttura per getopt_long
+    static struct option long_options[] = {
+        {"lex", no_argument, 0, 'l'},
+        {"parse", no_argument, 0, 'p'},
+        {"codegen", no_argument, 0, 'c'},
+        {0, 0, 0, 0} //terminatore obbligatorio
+    };
+
     //gestore flags
-    while ((opt=getopt(argc,argv,"vo:")) != -1) {
+    int option_index = 0;
+    while ((opt=getopt_long(argc,argv,"S",long_options,&option_index)) != -1) {
         switch (opt) {
-            case 'v':
-                printf("Modalità verbosa attivata\n");
+            case 'l':
+                stop_at_lex = 1;
                 break;
-            case 'o':
-                printf("File di output: %s\n",optarg);
+            case 'p':
+                stop_at_parse = 1;
                 break;
-            default:
-                printf ("Uso: %s [-v] [-o file] file_input\n",argv[0]);
+            case 'c':
+                stop_at_codegen = 1;
+                break;
+            case 'S':
+                stop_at_assembly = 1;
+                break;
+            case '?':
+                //l'utente ha inserito un flag inesistente
+                printf("Uso: %s [--lex] [--parse] [--codegen] [-S] file_input\n", argv[0]);
                 return 1;
         }
     }
@@ -31,15 +52,16 @@ int main(int argc, char *argv[]){
         return 1;
     }
 
-    printf("File da processare: %s\n", argv[optind]);
-    //fase 1.2: devo produrre return_2.i, pertanto tronco il .c, ovvero gli ultimi 2 caratteri del file di input e li sostituisco con .i tramite asprintf()
     char *input_file = argv[optind];
+    printf("File da processare: %s\n", input_file);
+    
+    //fase 1.2: devo produrre return_2.i, pertanto tronco il .c, ovvero gli ultimi 2 caratteri del file di input e li sostituisco con .i tramite asprintf()
     char *output_file = NULL;
 
     int len_truncated = strlen(input_file) -2;
     //asprintf scrive nell'indirizzo di output_file la stringa.i, dove stringa sono i primi len_truncated caratteri della stringa input_file
     asprintf(&output_file, "%.*s.i", len_truncated, input_file);
-    printf("File prodotto: %s\n", output_file);
+    printf("Nome file .i: %s\n", output_file);
 
     //fase 1.3: invocazione di GCC tramite fork()+execvp()
     //costruisco l'array di stringhe per execvp()
@@ -84,18 +106,42 @@ int main(int argc, char *argv[]){
 
             if (return_code!=0){
                 printf("Tuttavia, il comando ha sollevato un errore interno\n");
+                //elimino il .i corrotto
+                remove(output_file);
+                free(output_file);
+                return 1;
             }
        }
         else if (WIFSIGNALED(status)){
             //uscita non volontaria
             printf("Il figlio è terminato in modo anomalo\n");
+            remove(output_file);
+            free(output_file);
+            return 1;
         }
 
 
     }
     printf("Il padre ha terminato correttamente\n");
 
+    //L'utente vuole fermarsi in anticipo? = L'utente ha inserito dei flags?
+    if (stop_at_lex || stop_at_parse || stop_at_codegen){
+        remove(output_file);
+        free(output_file);
+        return 0;
+    }
+    //creo il nome del file assembly (.s)
+    char *assembly_file = NULL;
+    asprintf(&assembly_file, "%.*s.s", len_truncated, input_file);
+    printf("Nome file assembly: %s\n", assembly_file);
+
+    printf("Esecuzione compilatore STUB\n");
+    FILE *fake_s = fopen(assembly_file,"w");
+    if (fake_s) fclose(fake_s);
+
     //free necessaria per evitare memory leakage
+    remove(output_file);
     free(output_file);
+    free(assembly_file);
     return 0;
 }

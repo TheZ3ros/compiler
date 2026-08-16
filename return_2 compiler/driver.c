@@ -139,9 +139,96 @@ int main(int argc, char *argv[]){
     FILE *fake_s = fopen(assembly_file,"w");
     if (fake_s) fclose(fake_s);
 
+    if (stop_at_assembly){
+        remove(output_file);
+        free(assembly_file);
+        free(output_file);
+        return 0;
+    }
+
+    char *executable_file = NULL;
+    asprintf(&executable_file, "%.*s", len_truncated, input_file);
+    printf("Nome file eseguibile: %s\n", executable_file);
+
+    //fase finale: comando GCC per generare l'eseguibile
+    char *gcc_args_executable[] = {
+        "gcc",       //argv[0] del programma figlio
+        assembly_file,  
+        "-o",       //specifica output
+        executable_file,
+        NULL        //elemento obbligatorio al termine dell'array
+    };
+
+    //clono il padre
+    pid_t pid_executable = fork();
+
+    if (pid_executable<0){
+        perror("Errore durante la fork");
+        return 1;
+    }
+
+    else if (pid_executable==0){
+        //sono nel processo figlio, eseguo il comando di gcc
+        execvp("gcc",gcc_args_executable);
+        //se ho successo, il figlio diventa il nuovo programma principale e le righe sottostanti non vengono eseguite
+
+        perror("Errore: impossibile lanciare gcc");
+        exit(1);
+    }
+
+    else {
+        //sono nel padre
+        //il padre si blocca e attende che il figlio termini, per poi verificare l'esito di execvp()
+        int status_executable;
+        //per il padre, pid contiene l'ID numerico del figlio creato
+        waitpid(pid_executable, &status_executable, 0);
+
+        if (WIFEXITED(status_executable)) {
+            //uscita volontaria del figlio (è arrivato a fare return o exit)
+            int return_code_executable = WEXITSTATUS(status_executable);
+            printf("Il figlio è terminato correttamente con codice: %d\n",return_code_executable);
+
+            if (return_code_executable!=0){
+                printf("Tuttavia, il comando ha sollevato un errore interno\n");
+                //elimino il .i corrotto
+                remove(executable_file);
+                remove(output_file);
+                remove(assembly_file);
+
+                free(executable_file);
+                free(output_file);
+                free(assembly_file);
+
+                return 1;
+            }
+       }
+        else if (WIFSIGNALED(status_executable)){
+            //uscita non volontaria
+            printf("Il figlio è terminato in modo anomalo\n");
+            remove(executable_file);
+            remove(output_file);
+            remove(assembly_file);
+
+            free(executable_file);
+            free(output_file);
+            free(assembly_file);
+            
+            return 1;
+        }
+
+
+    }
+    printf("Il padre ha terminato correttamente\n");
+
+
     //free necessaria per evitare memory leakage
     remove(output_file);
     free(output_file);
+
+    remove(assembly_file);
     free(assembly_file);
+
+    free(executable_file);
+
     return 0;
 }
